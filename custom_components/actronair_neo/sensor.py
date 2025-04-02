@@ -4,7 +4,14 @@ import logging
 
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfPower, UnitOfTemperature
+from homeassistant.const import (
+    PERCENTAGE,
+    REVOLUTIONS_PER_MINUTE,
+    UnitOfPower,
+    UnitOfTemperature,
+    UnitOfTime,
+    UnitOfPressure,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -112,6 +119,70 @@ async def async_setup_entry(
             PERCENTAGE,
             False,
         ),
+        (
+            "airflow",
+            ["UserAirconSettings", "VFT"],
+            "Airflow",
+            SensorDeviceClass.VOLUME_FLOW_RATE,
+            None,
+            False,
+        ),
+        (
+            "static_pressure",
+            ["UserAirconSettings", "VFT"],
+            "StaticPressure",
+            SensorDeviceClass.PRESSURE,
+            UnitOfPressure.PA,
+            False,
+        ),
+        (
+            "fan_pwm",
+            ["LiveAircon"],
+            "FanPWM",
+            None,
+            PERCENTAGE,
+            True,
+        ),
+        (
+            "fan_rpm",
+            ["LiveAircon"],
+            "FanRPM",
+            None,
+            REVOLUTIONS_PER_MINUTE,
+            True,
+        ),
+        (
+            "quiet_mode_active",
+            ["UserAirconSettings"],
+            "QuietModeActive",
+            None,
+            None,
+            False,
+        ),
+        (
+            "controller_firmware_version",
+            ["AirconSystem"],
+            "MasterWCFirmwareVersion",
+            None,
+            None,
+            True,
+        ),
+        (
+            "indoor_firmware_version",
+            ["AirconSystem", "IndoorUnit"],
+            "IndoorFW",
+            None,
+            None,
+            True,
+        ),
+        (
+            "outdoor_firmware_version",
+            ["AirconSystem", "OutdoorUnit"],
+            "SoftwareVersion",
+            None,
+            None,
+            True,
+        ),
     ]
 
     entities: list[EntitySensor] = []
@@ -145,25 +216,44 @@ async def async_setup_entry(
         zones = coordinator.data[serial_number].get("RemoteZoneInfo", [])
 
         # Create zones & sensors
-        zone_map = {zone_number: zone for zone_number, zone in enumerate(zones, start=0)}
+        zone_map = {
+            zone_number: zone for zone_number, zone in enumerate(zones, start=0)
+        }
         for zone_number, zone in zone_map.items():
             if zone["NV_Exists"]:
-                zone_name = zone["NV_Title"]
-                entities.append(ZonePositionSensor(coordinator, serial_number, zone, zone_number))
-                entities.append(ZoneTemperatureSensor(coordinator, serial_number, zone, zone_number))
-                entities.append(ZoneHumiditySensor(coordinator, serial_number, zone, zone_number))
+                entities.append(
+                    ZonePositionSensor(coordinator, serial_number, zone, zone_number)
+                )
+                entities.append(
+                    ZoneTemperatureSensor(coordinator, serial_number, zone, zone_number)
+                )
+                entities.append(
+                    ZoneHumiditySensor(coordinator, serial_number, zone, zone_number)
+                )
 
         # Fetch Peripherals
-        peripherals = coordinator.data[serial_number].get("AirconSystem", {}).get("Peripherals", [])
+        peripherals = (
+            coordinator.data[serial_number]
+            .get("AirconSystem", {})
+            .get("Peripherals", [])
+        )
 
         for peripheral in peripherals:
             logical_address = peripheral["LogicalAddress"]
             zone_number = peripheral.get("ZoneAssignment")[0] - 1
             zone = zone_map.get(zone_number)
 
-            entities.append(PeripheralBatterySensor(coordinator, serial_number, zone, peripheral))
-            entities.append(PeripheralTemperatureSensor(coordinator, serial_number, zone, peripheral))
-            entities.append(PeripheralHumiditySensor(coordinator, serial_number, zone, peripheral))
+            entities.append(
+                PeripheralBatterySensor(coordinator, serial_number, zone, peripheral)
+            )
+            entities.append(
+                PeripheralTemperatureSensor(
+                    coordinator, serial_number, zone, peripheral
+                )
+            )
+            entities.append(
+                PeripheralHumiditySensor(coordinator, serial_number, zone, peripheral)
+            )
 
         # Add all sensors
         async_add_entities(entities)

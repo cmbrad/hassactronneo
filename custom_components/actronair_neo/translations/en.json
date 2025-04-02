@@ -83,6 +83,30 @@
       },
       "battery": {
         "name": "Battery"
+      },
+      "airflow": {
+        "name": "Airflow"
+      },
+      "static_pressure": {
+        "name": "Static Pressure"
+      },
+      "fan_pwm": {
+        "name": "Fan PWM"
+      },
+      "fan_rpm": {
+        "name": "Fan RPM"
+      },
+      "quiet_mode_active": {
+        "name": "Quiet Mode Active"
+      },
+      "controller_firmware_version": {
+        "name": "Controller Firmware Version"
+      },
+      "indoor_firmware_version": {
+        "name": "Indoor Firmware Version"
+      },
+      "outdoor_firmware_version": {
+        "name": "Outdoor Firmware Version"
       }
     },
     "switch": {

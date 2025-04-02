@@ -35,11 +35,10 @@ class EntitySensor(CoordinatorEntity, Entity):
     ) -> None:
         """Initialise diagnostic sensor."""
         super().__init__(coordinator)
-        self._path = path if isinstance(path, list) else [
-            path]  # Ensure path is a list
+        self._path = path if isinstance(path, list) else [path]  # Ensure path is a list
         self._key = key
         self._serial_number = serial_number
-        self._status = coordinator.data[self._serial_number]
+        self._coordinator = coordinator
         self._is_diagnostic = is_diagnostic
         self._attr_device_class = device_class
         self._attr_unit_of_measurement = unit_of_measurement
@@ -52,7 +51,7 @@ class EntitySensor(CoordinatorEntity, Entity):
     @property
     def state(self):
         """Return the state of the sensor."""
-        data = self._status
+        data = self._coordinator.data[self._serial_number]
         if data:
             # Traverse the path dynamically
             for key in self._path:
@@ -85,14 +84,16 @@ class BaseZoneSensor(CoordinatorEntity, Entity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._serial_number = serial_number
-        self._status = coordinator.data[self._serial_number]
+        self._coordinator = coordinator
         self._zone = zone
         self._zone_number = zone_number
         self._state_key = state_key
         self._attr_device_class = device_class
         self._attr_unit_of_measurement = unit_of_measurement
         self._attr_translation_key = translation_key
-        self._attr_unique_id = f"{self._serial_number}_zone_{self._zone_number}_{translation_key}"
+        self._attr_unique_id = (
+            f"{self._serial_number}_zone_{self._zone_number}_{translation_key}"
+        )
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{self._serial_number}_zone_{self._zone_number}")},
         )
@@ -100,7 +101,7 @@ class BaseZoneSensor(CoordinatorEntity, Entity):
     @property
     def state(self) -> str | None:
         """Return the state of the sensor."""
-        zones = self._status.get("RemoteZoneInfo", [])
+        zones = self._coordinator.data[self._serial_number].get("RemoteZoneInfo", [])
         for zone_number, zone in enumerate(zones, start=0):
             if zone_number == self._zone_number:
                 return zone.get(self._state_key, None)
@@ -177,8 +178,8 @@ class BasePeripheralSensor(CoordinatorEntity, Entity):
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-        self._serial_number = serial_number
-        self._status = coordinator.data[self._serial_number]
+        self._ac_serial_number = serial_number
+        self._coordinator = coordinator
         self._zone = zone
         self._peripheral = peripheral
         self._logical_address = peripheral["LogicalAddress"]
@@ -188,9 +189,7 @@ class BasePeripheralSensor(CoordinatorEntity, Entity):
         self._attr_device_class = device_class
         self._attr_unit_of_measurement = unit_of_measurement
         self._attr_translation_key = translation_key
-        self._attr_unique_id = (
-            f"{self._serial_number}_{translation_key}"
-        )
+        self._attr_unique_id = f"{self._serial_number}_{translation_key}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self._serial_number)},
         )
@@ -199,8 +198,10 @@ class BasePeripheralSensor(CoordinatorEntity, Entity):
     def state(self) -> str | None:
         """Return the state of the sensor."""
         # Look up the state using the state key in the data.
-        data_source = self._status.get("AirconSystem", {}).get(
-            "Peripherals", []
+        data_source = (
+            self._coordinator.data[self._ac_serial_number]
+            .get("AirconSystem", {})
+            .get("Peripherals", [])
         )
         for peripheral in data_source:
             if peripheral["LogicalAddress"] == self._logical_address:
