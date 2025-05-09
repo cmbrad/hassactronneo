@@ -242,6 +242,14 @@ class ActronSystemClimate(
     @property
     def target_temperature(self) -> float:
         """Return the target temperature."""
+        if self.hvac_mode.lower() == HVACMode.HEAT:
+            return (
+                self.coordinator.data[self._serial_number]
+                .get("UserAirconSettings", {})
+                .get("TemperatureSetpoint_Heat_oC")
+            )
+
+        # assume cool mode unless heat mode is set
         return (
             self.coordinator.data[self._serial_number]
             .get("UserAirconSettings", {})
@@ -482,6 +490,10 @@ class ActronZoneClimate(CoordinatorEntity, ClimateEntity):
         zone = self.coordinator.data[self._serial_number]["RemoteZoneInfo"][
             self._zone_number
         ]
+
+        if self.hvac_mode.lower() == HVACMode.HEAT:
+            return zone["TemperatureSetpoint_Heat_oC"]
+
         return zone["TemperatureSetpoint_Cool_oC"]
 
     @property
