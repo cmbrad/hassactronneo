@@ -32,9 +32,11 @@ class ActronNeoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER,
             name="Actron Neo Status",
             update_interval=SCAN_INTERVAL,
+            # customise debouncer and always update to fix UI responsiveness
             request_refresh_debouncer=Debouncer(
                 hass, _LOGGER, cooldown=REQUEST_REFRESH_DELAY, immediate=True
             ),
+            always_update=True,
         )
         self.api = ActronNeoAPI(pairing_token=pairing_token)
         self.entry = entry
