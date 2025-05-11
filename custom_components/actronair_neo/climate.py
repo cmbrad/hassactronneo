@@ -242,14 +242,21 @@ class ActronSystemClimate(
     @property
     def target_temperature(self) -> float:
         """Return the target temperature."""
-        if self.hvac_mode.lower() == HVACMode.HEAT:
+        system_mode = (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("Mode")
+        )
+        if system_mode == "HEAT":
             return (
                 self.coordinator.data[self._serial_number]
                 .get("UserAirconSettings", {})
                 .get("TemperatureSetpoint_Heat_oC")
             )
+        if system_mode == "FAN":
+            return None
 
-        # assume cool mode unless heat mode is set
+        # assume cool mode at this point
         return (
             self.coordinator.data[self._serial_number]
             .get("UserAirconSettings", {})
@@ -485,15 +492,22 @@ class ActronZoneClimate(CoordinatorEntity, ClimateEntity):
         return zone["LiveTemp_oC"]
 
     @property
-    def target_temperature(self) -> float | None:
+    def target_temperature(self) -> float:
         """Return the target temperature."""
         zone = self.coordinator.data[self._serial_number]["RemoteZoneInfo"][
             self._zone_number
         ]
+        system_mode = (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("Mode")
+        )
+        if system_mode == "HEAT":
+            zone["TemperatureSetpoint_Heat_oC"]
+        if system_mode == "FAN":
+            return None
 
-        if self.hvac_mode.lower() == HVACMode.HEAT:
-            return zone["TemperatureSetpoint_Heat_oC"]
-
+        # assume cool mode at this point
         return zone["TemperatureSetpoint_Cool_oC"]
 
     @property
