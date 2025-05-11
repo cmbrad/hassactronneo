@@ -13,7 +13,7 @@ from homeassistant.components.climate import (
     HVACAction,
 )
 from homeassistant.const import UnitOfTemperature
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -127,132 +127,23 @@ class ActronSystemClimate(
             serial_number=serial_number,
         )
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        # shared data
+    @property
+    def hvac_mode(self) -> HVACMode:
+        """Return the current HVAC mode."""
         system_state = (
             self.coordinator.data[self._serial_number]
             .get("UserAirconSettings", {})
             .get("isOn")
         )
-        defrost = (
-            self.coordinator.data[self._serial_number]
-            .get("LiveAircon", {})
-            .get("Defrost")
-        )
-        system_mode = (
+        if not system_state:
+            return HVACMode.OFF
+
+        hvac_mode = (
             self.coordinator.data[self._serial_number]
             .get("UserAirconSettings", {})
             .get("Mode")
         )
-        compressor_mode = (
-            self.coordinator.data[self._serial_number]
-            .get("LiveAircon", {})
-            .get("CompressorMode")
-        )
-        fan_mode = (
-            self.coordinator.data[self._serial_number]
-            .get("UserAirconSettings", {})
-            .get("FanMode")
-            .upper()
-        )
-
-        _LOGGER.debug(
-            "System state: %s, Defrost: %s, System mode: %s, Compressor mode: %s, Fan mode: %s",
-            system_state,
-            defrost,
-            system_mode,
-            compressor_mode,
-            fan_mode,
-        )
-
-        # update hvac mode
-        if not system_state:
-            hvac_mode = HVACMode.OFF
-        else:
-            hvac_mode = (
-                self.coordinator.data[self._serial_number]
-                .get("UserAirconSettings", {})
-                .get("Mode")
-            )
-
-        self._attr_hvac_mode = HVAC_MODE_MAPPING.get(hvac_mode, HVACMode.OFF)
-
-        # hvac action
-        # if system is off then the action is off
-        if not system_state:
-            hvac_action = HVACAction.OFF
-        elif defrost:
-            hvac_action = HVACAction.DEFROSTING
-        elif system_mode in ["COOL", "AUTO"] and compressor_mode == "COOL":
-            hvac_action = HVACAction.COOLING
-        elif system_mode in ["HEAT", "AUTO"] and compressor_mode == "HEAT":
-            hvac_action = HVACAction.HEATING
-        elif system_mode == "FAN" or "CONT" in fan_mode:
-            hvac_action = HVACAction.FAN
-        else:
-            hvac_action = HVACAction.IDLE
-
-        self._attr_hvac_action = hvac_action
-
-        # fan mode
-        fan_mode_without_cont = fan_mode.split("+")[0]
-        self._attr_fan_mode = FAN_MODE_MAPPING_REVERSE.get(
-            fan_mode_without_cont, "AUTO"
-        )
-
-        # humidity
-        self._attr_current_humidity = (
-            self.coordinator.data[self._serial_number]
-            .get("MasterInfo", {})
-            .get("LiveHumidity_pc")
-        )
-
-        # temperature
-        self._attr_current_temperature = (
-            self.coordinator.data[self._serial_number]
-            .get("MasterInfo", {})
-            .get("LiveTemp_oC")
-        )
-
-        # target temperature
-        """Return the target temperature."""
-        if system_mode == "HEAT":
-            target_temperature = (
-                self.coordinator.data[self._serial_number]
-                .get("UserAirconSettings", {})
-                .get("TemperatureSetpoint_Heat_oC")
-            )
-        elif system_mode == "FAN":
-            target_temperature = None
-        else:
-            target_temperature = (
-                self.coordinator.data[self._serial_number]
-                .get("UserAirconSettings", {})
-                .get("TemperatureSetpoint_Cool_oC")
-            )
-
-        self._attr_target_temperature = target_temperature
-
-        # min temperature
-        self._attr_min_temp = (
-            self.coordinator.data[self._serial_number]
-            .get("NV_Limits", {})
-            .get("UserSetpoint_oC", {})
-            .get("setCool_Min", 16.0)
-        )
-
-        # max temperature
-        self._attr_max_temp = (
-            self.coordinator.data[self._serial_number]
-            .get("NV_Limits", {})
-            .get("UserSetpoint_oC", {})
-            .get("setCool_Max", 32.0)
-        )
-
-        # done
-        self.async_write_ha_state()
+        return HVAC_MODE_MAPPING.get(hvac_mode, HVACMode.OFF)
 
     @property
     def hvac_modes(self) -> list[HVACMode]:
@@ -264,6 +155,133 @@ class ActronSystemClimate(
             HVACMode.AUTO,
             HVACMode.FAN_ONLY,
         ]
+
+    @property
+    def hvac_action(self) -> HVACAction:
+        # if system is off then the action is off
+        system_state = (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("isOn")
+        )
+        if not system_state:
+            return HVACAction.OFF
+
+        # check for defrosting
+        defrost = (
+            self.coordinator.data[self._serial_number]
+            .get("LiveAircon", {})
+            .get("Defrost")
+        )
+        if defrost:
+            return HVACAction.DEFROSTING
+
+        # if system is on and mode is cool/heat/auto then pay attention to the compressor
+        system_mode = (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("Mode")
+        )
+        compressor_mode = (
+            self.coordinator.data[self._serial_number]
+            .get("LiveAircon", {})
+            .get("CompressorMode")
+        )
+        if system_mode in ["COOL", "AUTO"] and compressor_mode == "COOL":
+            return HVACAction.COOLING
+        if system_mode in ["HEAT", "AUTO"] and compressor_mode == "HEAT":
+            return HVACAction.HEATING
+
+        # could be fan only
+        if system_mode == "FAN":
+            return HVACAction.FAN
+
+        # if continuous fan mode and the compressor is off then return fan on
+        fan_mode = (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("FanMode")
+            .upper()
+        )
+        if "CONT" in fan_mode:
+            return HVACAction.FAN
+
+        # assume not doing anything
+        return HVACAction.IDLE
+
+    @property
+    def fan_mode(self) -> str:
+        """Return the current fan mode."""
+        api_fan_mode = (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("FanMode")
+            .upper()
+        )
+        fan_mode_without_cont = api_fan_mode.split("+")[0]
+        return FAN_MODE_MAPPING_REVERSE.get(fan_mode_without_cont, "AUTO")
+
+    @property
+    def current_humidity(self) -> float:
+        """Return the current humidity."""
+        return (
+            self.coordinator.data[self._serial_number]
+            .get("MasterInfo", {})
+            .get("LiveHumidity_pc")
+        )
+
+    @property
+    def current_temperature(self) -> float:
+        """Return the current temperature."""
+        return (
+            self.coordinator.data[self._serial_number]
+            .get("MasterInfo", {})
+            .get("LiveTemp_oC")
+        )
+
+    @property
+    def target_temperature(self) -> float:
+        """Return the target temperature."""
+        system_mode = (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("Mode")
+        )
+        if system_mode == "HEAT":
+            return (
+                self.coordinator.data[self._serial_number]
+                .get("UserAirconSettings", {})
+                .get("TemperatureSetpoint_Heat_oC")
+            )
+        if system_mode == "FAN":
+            return None
+
+        # assume cool mode at this point
+        return (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("TemperatureSetpoint_Cool_oC")
+        )
+
+    @property
+    def min_temp(self) -> float:
+        """Return the minimum temperature that can be set."""
+        return (
+            self.coordinator.data[self._serial_number]
+            .get("NV_Limits", {})
+            .get("UserSetpoint_oC", {})
+            .get("setCool_Min", 16.0)
+        )
+
+    @property
+    def max_temp(self) -> float:
+        """Return the maximum temperature that can be set."""
+        return (
+            self.coordinator.data[self._serial_number]
+            .get("NV_Limits", {})
+            .get("UserSetpoint_oC", {})
+            .get("setCool_Max", 32.0)
+        )
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set a new fan mode."""
@@ -357,97 +375,31 @@ class ActronZoneClimate(CoordinatorEntity, ClimateEntity):
             suggested_area=self._name,
         )
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        # Zone-specific data
-        zone = self.coordinator.data[self._serial_number]["RemoteZoneInfo"][
-            self._zone_number
-        ]
-        enabled_zones = self.coordinator.data[self._serial_number][
-            "UserAirconSettings"
-        ]["EnabledZones"]
-        system_mode = self.coordinator.data[self._serial_number]["UserAirconSettings"][
-            "Mode"
-        ]
-        compressor_mode = self.coordinator.data[self._serial_number]["LiveAircon"][
-            "CompressorMode"
-        ]
-        fan_mode = self.coordinator.data[self._serial_number]["UserAirconSettings"][
-            "FanMode"
-        ].upper()
-        defrost = self.coordinator.data[self._serial_number]["LiveAircon"]["Defrost"]
-        system_state = self.coordinator.data[self._serial_number]["UserAirconSettings"][
-            "isOn"
-        ]
+    @property
+    def hvac_mode(self) -> HVACMode:
+        """Return the current HVAC mode."""
 
-        _LOGGER.debug(
-            "Zone %s: %s, System state: %s, Defrost: %s, System mode: %s, Compressor mode: %s, Fan mode: %s",
-            self._zone_number,
-            enabled_zones[self._zone_number],
-            system_state,
-            defrost,
-            system_mode,
-            compressor_mode,
-            fan_mode,
+        enabled_zones = (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("EnabledZones", [])
         )
+        _LOGGER.debug(
+            f"Querying zone {self._zone_number}. Enabled zones are {enabled_zones} for {self._serial_number}"
+        )
+        zone_state = enabled_zones[self._zone_number]
+        _LOGGER.debug(f"Zone state for {self._zone_number} is {zone_state}")
+        if zone_state:
+            hvac_mode = (
+                self.coordinator.data[self._serial_number]
+                .get("UserAirconSettings", {})
+                .get("Mode")
+            )
+            _LOGGER.debug(f"Zone mode for {self._zone_number} is {hvac_mode}")
+            return HVAC_MODE_MAPPING.get(hvac_mode, HVACMode.OFF)
 
-        # Update hvac_mode
-        if enabled_zones[self._zone_number]:
-            self._attr_hvac_mode = HVAC_MODE_MAPPING.get(system_mode, HVACMode.OFF)
-        else:
-            self._attr_hvac_mode = HVACMode.OFF
-
-        # Update hvac_action
-        if not system_state or not enabled_zones[self._zone_number]:
-            hvac_action = HVACAction.OFF
-        elif defrost:
-            hvac_action = HVACAction.DEFROSTING
-        elif system_mode in ["COOL", "AUTO"] and compressor_mode == "COOL":
-            hvac_action = HVACAction.COOLING
-        elif system_mode in ["HEAT", "AUTO"] and compressor_mode == "HEAT":
-            hvac_action = HVACAction.HEATING
-        elif system_mode == "FAN" or "CONT" in fan_mode:
-            hvac_action = HVACAction.FAN
-        else:
-            hvac_action = HVACAction.IDLE
-
-        self._attr_hvac_action = hvac_action
-
-        # Update current_humidity
-        self._attr_current_humidity = zone["LiveHumidity_pc"]
-
-        # Update current_temperature
-        self._attr_current_temperature = zone["LiveTemp_oC"]
-
-        # Update target_temperature
-        if system_mode == "HEAT":
-            self._attr_target_temperature = zone["TemperatureSetpoint_Heat_oC"]
-        elif system_mode == "FAN":
-            self._attr_target_temperature = None
-        else:
-            self._attr_target_temperature = zone["TemperatureSetpoint_Cool_oC"]
-
-        # Update min_temp
-        min_setpoint = self.coordinator.data[self._serial_number]["NV_Limits"][
-            "UserSetpoint_oC"
-        ]["setCool_Min"]
-        target_setpoint = self.coordinator.data[self._serial_number][
-            "UserAirconSettings"
-        ]["TemperatureSetpoint_Cool_oC"]
-        temp_variance = self.coordinator.data[self._serial_number][
-            "UserAirconSettings"
-        ]["ZoneTemperatureSetpointVariance_oC"]
-        self._attr_min_temp = max(min_setpoint, target_setpoint - temp_variance)
-
-        # Update max_temp
-        max_setpoint = self.coordinator.data[self._serial_number]["NV_Limits"][
-            "UserSetpoint_oC"
-        ]["setCool_Max"]
-        self._attr_max_temp = min(max_setpoint, target_setpoint + temp_variance)
-
-        # Done
-        self.async_write_ha_state()
+        _LOGGER.debug(f"Zone mode for {self._zone_number} is off")
+        return HVACMode.OFF
 
     @property
     def hvac_modes(self) -> list[HVACMode]:
@@ -460,6 +412,135 @@ class ActronZoneClimate(CoordinatorEntity, ClimateEntity):
             .get("Mode")
         )
         return [HVACMode.OFF, HVAC_MODE_MAPPING[hvac_mode]]
+
+    @property
+    def hvac_action(self) -> HVACAction:
+        # if system is off then the action is off
+        system_state = (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("isOn")
+        )
+        if not system_state:
+            return HVACAction.OFF
+
+        # if zone is not enabled then it's off
+        enabled_zones = (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("EnabledZones", [])
+        )
+        if not enabled_zones[self._zone_number]:
+            return HVACAction.OFF
+
+        # check for defrosting
+        defrost = (
+            self.coordinator.data[self._serial_number]
+            .get("LiveAircon", {})
+            .get("Defrost")
+        )
+        if defrost:
+            return HVACAction.DEFROSTING
+
+        # if system is on and mode is cool/heat/auto then pay attention to the compressor
+        system_mode = (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("Mode")
+        )
+        compressor_mode = (
+            self.coordinator.data[self._serial_number]
+            .get("LiveAircon", {})
+            .get("CompressorMode")
+        )
+        if system_mode in ["COOL", "AUTO"] and compressor_mode == "COOL":
+            return HVACAction.COOLING
+        if system_mode in ["HEAT", "AUTO"] and compressor_mode == "HEAT":
+            return HVACAction.HEATING
+
+        # could be fan only
+        if system_mode == "FAN":
+            return HVACAction.FAN
+
+        # if continuous fan mode and the compressor is off then return fan on
+        fan_mode = (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("FanMode")
+            .upper()
+        )
+        if "CONT" in fan_mode:
+            return HVACAction.FAN
+
+        # assume not doing anything
+        return HVACAction.IDLE
+
+    @property
+    def current_humidity(self) -> float | None:
+        """Return the current humidity."""
+        zone = self.coordinator.data[self._serial_number]["RemoteZoneInfo"][
+            self._zone_number
+        ]
+        return zone["LiveHumidity_pc"]
+
+    @property
+    def current_temperature(self) -> float | None:
+        """Return the current temperature."""
+        zone = self.coordinator.data[self._serial_number]["RemoteZoneInfo"][
+            self._zone_number
+        ]
+        return zone["LiveTemp_oC"]
+
+    @property
+    def target_temperature(self) -> float:
+        """Return the target temperature."""
+        zone = self.coordinator.data[self._serial_number]["RemoteZoneInfo"][
+            self._zone_number
+        ]
+        system_mode = (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("Mode")
+        )
+        if system_mode == "HEAT":
+            return zone["TemperatureSetpoint_Heat_oC"]
+        if system_mode == "FAN":
+            return None
+
+        # assume cool mode at this point
+        return zone["TemperatureSetpoint_Cool_oC"]
+
+    @property
+    def min_temp(self) -> float:
+        """Return the minimum temperature that can be set."""
+        min_setpoint = self.coordinator.data[self._serial_number]["NV_Limits"][
+            "UserSetpoint_oC"
+        ]["setCool_Min"]
+        target_setpoint = self.coordinator.data[self._serial_number][
+            "UserAirconSettings"
+        ]["TemperatureSetpoint_Cool_oC"]
+        temp_variance = self.coordinator.data[self._serial_number][
+            "UserAirconSettings"
+        ]["ZoneTemperatureSetpointVariance_oC"]
+        if min_setpoint > target_setpoint - temp_variance:
+            return min_setpoint
+        return target_setpoint - temp_variance
+
+    @property
+    def max_temp(self) -> float:
+        """Return the maximum temperature that can be set."""
+        max_setpoint = self.coordinator.data[self._serial_number]["NV_Limits"][
+            "UserSetpoint_oC"
+        ]["setCool_Max"]
+        target_setpoint = self.coordinator.data[self._serial_number][
+            "UserAirconSettings"
+        ]["TemperatureSetpoint_Cool_oC"]
+        temp_variance = self.coordinator.data[self._serial_number][
+            "UserAirconSettings"
+        ]["ZoneTemperatureSetpointVariance_oC"]
+        if max_setpoint < target_setpoint + temp_variance:
+            return max_setpoint
+        return target_setpoint + temp_variance
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set the HVAC mode."""
