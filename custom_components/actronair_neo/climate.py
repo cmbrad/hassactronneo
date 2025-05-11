@@ -503,7 +503,7 @@ class ActronZoneClimate(CoordinatorEntity, ClimateEntity):
             .get("Mode")
         )
         if system_mode == "HEAT":
-            zone["TemperatureSetpoint_Heat_oC"]
+            return zone["TemperatureSetpoint_Heat_oC"]
         if system_mode == "FAN":
             return None
 
