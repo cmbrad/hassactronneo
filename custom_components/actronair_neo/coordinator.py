@@ -17,7 +17,7 @@ type ActronConfigEntry = ConfigEntry[ActronNeoDataUpdateCoordinator]
 _LOGGER = logging.getLogger(__name__)
 
 SCAN_INTERVAL = timedelta(seconds=30)
-REQUEST_REFRESH_DELAY = 0.5
+REQUEST_REFRESH_DELAY = 1.0
 
 
 class ActronNeoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -34,7 +34,7 @@ class ActronNeoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=SCAN_INTERVAL,
             # customise debouncer and always update to fix UI responsiveness
             request_refresh_debouncer=Debouncer(
-                hass, _LOGGER, cooldown=REQUEST_REFRESH_DELAY, immediate=True
+                hass, _LOGGER, cooldown=REQUEST_REFRESH_DELAY, immediate=False
             ),
             always_update=True,
         )
