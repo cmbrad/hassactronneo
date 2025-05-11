@@ -9,6 +9,7 @@ from actron_neo_api import ActronNeoAPI
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.debounce import Debouncer
 import asyncio
 
 type ActronConfigEntry = ConfigEntry[ActronNeoDataUpdateCoordinator]
@@ -16,6 +17,7 @@ type ActronConfigEntry = ConfigEntry[ActronNeoDataUpdateCoordinator]
 _LOGGER = logging.getLogger(__name__)
 
 SCAN_INTERVAL = timedelta(seconds=30)
+REQUEST_REFRESH_DELAY = 0.5
 
 
 class ActronNeoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -30,6 +32,9 @@ class ActronNeoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER,
             name="Actron Neo Status",
             update_interval=SCAN_INTERVAL,
+            request_refresh_debouncer=Debouncer(
+                hass, _LOGGER, cooldown=REQUEST_REFRESH_DELAY, immediate=True
+            ),
         )
         self.api = ActronNeoAPI(pairing_token=pairing_token)
         self.entry = entry
