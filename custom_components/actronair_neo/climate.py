@@ -307,7 +307,11 @@ class ActronSystemClimate(
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set the temperature."""
         temp = kwargs.get("temperature")
-        hvac_mode = self.hvac_mode.lower()
+        hvac_mode = (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("Mode")
+        ).lower()
 
         if hvac_mode == HVACMode.COOL:
             mode = "COOL"
@@ -548,7 +552,11 @@ class ActronZoneClimate(CoordinatorEntity, ClimateEntity):
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set the temperature."""
         temp = kwargs["temperature"]
-        hvac_mode = self.hvac_mode
+        hvac_mode = (
+            self.coordinator.data[self._serial_number]
+            .get("UserAirconSettings", {})
+            .get("Mode")
+        ).lower()
 
         if hvac_mode == HVACMode.COOL:
             mode = "COOL"
