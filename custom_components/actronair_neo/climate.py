@@ -310,23 +310,15 @@ class ActronSystemClimate(
         hvac_mode = self.hvac_mode.lower()
 
         if hvac_mode == HVACMode.COOL:
-            await self._api.set_temperature(
-                self._serial_number,
-                mode="COOL",
-                temperature=temp,
-            )
+            mode = "COOL"
         elif hvac_mode == HVACMode.HEAT:
-            await self._api.set_temperature(
-                self._serial_number,
-                mode="HEAT",
-                temperature=temp,
-            )
+            mode = "HEAT"
         elif hvac_mode == HVACMode.AUTO:
             mode = "AUTO"
             temp = {"cool": temp, "heat": temp}
 
         await self._api.set_temperature(
-            self._serial_number,
+            serial_number=self._serial_number,
             mode=mode,
             temperature=temp,
         )
